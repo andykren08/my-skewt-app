@@ -10,14 +10,29 @@ from metpy.units import units
 st.set_page_config(page_title="NC TAF Skew-T Viewer", layout="wide")
 st.title("Interactive Hourly Skew-T Profiles (Central NC)")
 
-col1, col2, col3 = st.columns(3)
+# Initialize session state for the forecast hour
+if "fhour" not in st.session_state:
+    st.session_state.fhour = 0
+
+col1, col2, col3 = st.columns([2, 2, 3])
 with col1:
     model = st.selectbox("Select Model", ["hrrr", "rap", "gfs", "rrfs"]).lower()
 with col2:
     site = st.selectbox("Select TAF Site", ["krdu", "kgso", "kint", "kfay", "krwi"]).lower()
 with col3:
-    # In a fully dynamic app, you would parse the file first to get available hours
-    forecast_hour = st.number_input("Forecast Hour (e.g., 0, 1, 2)", min_value=0, max_value=84, value=0)
+    st.write("Forecast Hour Navigation")
+    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
+    with btn_col1:
+        if st.button("◀ Prev"):
+            st.session_state.fhour = max(0, st.session_state.fhour - 1)
+    with btn_col2:
+        st.session_state.fhour = st.number_input("Hour", min_value=0, max_value=84, value=st.session_state.fhour, label_visibility="collapsed")
+    with btn_col3:
+        if st.button("Next ▶"):
+            st.session_state.fhour += 1
+
+# Use the session state variable for the rest of the script
+forecast_hour = st.session_state.fhour
 
 # --- 2. DATA RETRIEVAL ---
 @st.cache_data(ttl=3600)
@@ -73,6 +88,7 @@ def parse_bufkit_hour(raw_text, target_fhour):
         return pd.DataFrame()
         
     df = pd.DataFrame(data_rows)
+    df = df.drop_duplicates(subset='Pressure_hPa')
     return df.sort_values("Pressure_hPa", ascending=False).reset_index(drop=True)
 
 # --- 4. THERMODYNAMIC CALCULATIONS & PLOTTING ---
@@ -103,7 +119,7 @@ def plot_interactive_skewt(df, model, site, fhour):
     # Plot Environmental Temperature
     fig.add_trace(go.Scatter(
         x=df['Temp_Skewed'], y=df['Pressure_hPa'],
-        mode='lines+markers', name='Temperature (°C)',
+        mode='lines', name='Temperature (°C)',
         line=dict(color='red', width=2),
         text=df['Temp_C'],
         hovertemplate="Temp: %{text:.1f}°C<br>Pressure: %{y:.0f} hPa<extra></extra>"
@@ -112,7 +128,7 @@ def plot_interactive_skewt(df, model, site, fhour):
     # Plot Environmental Dewpoint
     fig.add_trace(go.Scatter(
         x=df['Dew_Skewed'], y=df['Pressure_hPa'],
-        mode='lines+markers', name='Dewpoint (°C)',
+        mode='lines', name='Dewpoint (°C)',
         line=dict(color='green', width=2),
         text=df['Dewpoint_C'],
         hovertemplate="Dewpoint: %{text:.1f}°C<br>Pressure: %{y:.0f} hPa<extra></extra>"
@@ -135,15 +151,19 @@ def plot_interactive_skewt(df, model, site, fhour):
             type="log",
             autorange="reversed",
             tickvals=[1000, 850, 700, 500, 300, 200, 100],
-            range=[np.log10(1050), np.log10(100)]
+            range=[np.log10(1050), np.log10(100)],
+            gridcolor="gray"
         ),
         xaxis=dict(
             title="Temperature (°C) [Skewed]",
-            showticklabels=False # Hide skewed X-axis numbers to avoid confusion
+            showticklabels=False,
+            gridcolor="gray"
         ),
         height=800,
         hovermode="y unified",
-        template="plotly_white"
+        template="plotly_dark",     # Changes to dark mode
+        plot_bgcolor='black',       # Matches BUFKIT black background
+        paper_bgcolor='black'
     )
     
     return fig

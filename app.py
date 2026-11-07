@@ -24,7 +24,8 @@ with col3:
 def fetch_bufkit_data(model, site):
     """Fetches the latest BUFKIT file from the PSU E-Wall archive."""
     # Note: RRFS is actively transitioning; URL structure may shift as it goes operational.
-    url = f"http://www.meteo.psu.edu/bufkit/data/{model.upper()}/bufkit_{site}.buf"
+    refix = "gfs3" if model == "gfs" else model
+    url = f"http://www.meteo.psu.edu/bufkit/data/{model.upper()}/{prefix}_{site}.buf"
     response = requests.get(url)
     
     if response.status_code == 200:

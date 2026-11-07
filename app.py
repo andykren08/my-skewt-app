@@ -36,47 +36,43 @@ def fetch_bufkit_data(model, site):
 # --- 3. BUFKIT PARSER ---
 def parse_bufkit_hour(raw_text, target_fhour):
     """
-    Extracts the pressure, temp, dewpoint, and wind data for a specific forecast hour.
-    BUFKIT files are separated by blocks denoting the forecast time.
+    Extracts the data for a specific forecast hour block.
+    Splits by 'STN ' which marks the start of each new time step in BUFKIT files.
     """
-    lines = raw_text.split('\n')
-    is_target_hour = False
+    # Split file into individual forecast time blocks
+    blocks = raw_text.split('STN ')
+    
+    # Filter out the file header block to leave only the data blocks
+    data_blocks = [b for b in blocks if len(b.split('\n')) > 20]
+    
+    # Ensure the requested hour isn't out of range
+    if target_fhour >= len(data_blocks):
+        return pd.DataFrame()
+        
+    target_block = data_blocks[target_fhour]
     data_rows = []
     
-    for line in lines:
+    for line in target_block.split('\n'):
         line = line.strip()
-        if not line: continue
+        parts = line.split()
         
-        # BUFKIT time blocks usually start with something like "STN YYMMDD/HHMM" 
-        # or indicate the forecast hour in the header block.
-        # This is a simplified regex/check for the specific forecast hour marker.
-        if "F" + str(target_fhour).zfill(2) in line or f"{target_fhour:02d} HR" in line:
-            is_target_hour = True
-            continue
-        elif "STN" in line and is_target_hour and len(data_rows) > 0:
-            # Hit the next time block, stop parsing
-            break
-            
-        if is_target_hour:
-            parts = line.split()
-            # Standard BUFKIT profile line: PRES TMPC TMWC DWPC THTE DRCT SKNT OMEG CFRL HGHT
-            if len(parts) >= 7 and parts[0].replace('.', '', 1).isdigit():
-                try:
-                    data_rows.append({
-                        "Pressure_hPa": float(parts[0]),
-                        "Temp_C": float(parts[1]),
-                        "Dewpoint_C": float(parts[3]),
-                        "Wind_Dir": float(parts[5]),
-                        "Wind_Kts": float(parts[6])
-                    })
-                except ValueError:
-                    continue
-                    
+        # Identify data rows: must have enough columns and start with a number (Pressure)
+        if len(parts) >= 7 and parts[0].replace('.', '', 1).isdigit():
+            try:
+                data_rows.append({
+                    "Pressure_hPa": float(parts[0]),
+                    "Temp_C": float(parts[1]),
+                    "Dewpoint_C": float(parts[3]),
+                    "Wind_Dir": float(parts[5]),
+                    "Wind_Kts": float(parts[6])
+                })
+            except ValueError:
+                continue
+                
     if not data_rows:
         return pd.DataFrame()
         
     df = pd.DataFrame(data_rows)
-    # Sort from surface to top of atmosphere (decreasing pressure)
     return df.sort_values("Pressure_hPa", ascending=False).reset_index(drop=True)
 
 # --- 4. THERMODYNAMIC CALCULATIONS & PLOTTING ---

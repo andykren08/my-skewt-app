@@ -38,14 +38,20 @@ if station:
             T = data['T'].m if hasattr(data['T'], 'm') else np.array(data['T'])
             Td = data['Td'].m if hasattr(data['Td'], 'm') else np.array(data['Td'])
             
-            # Extract U and V and compute Speed and Direction
+            # Wind extraction
             u_raw = data.get('u', data.get('u_wind'))
             v_raw = data.get('v', data.get('v_wind'))
             u = u_raw.m if hasattr(u_raw, 'm') else np.array(u_raw)
             v = v_raw.m if hasattr(v_raw, 'm') else np.array(v_raw)
-            
             wspd = np.hypot(u, v)
             wdir = (270 - np.rad2deg(np.arctan2(v, u))) % 360
+
+            # Height and AGL calculation
+            z_raw = data.get('z', data.get('height'))
+            z = z_raw.m if hasattr(z_raw, 'm') else np.array(z_raw)
+            sfc_elev = z[0]
+            z_agl_m = z - sfc_elev
+            z_agl_ft = z_agl_m * 3.28084
             
             site_info = data.get('site_info', {})
             raw_init = site_info.get('run-time', ['Unknown Init'])
@@ -61,13 +67,13 @@ if station:
             
             st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
             
-            # Create a 2-column layout sharing the same Y (Pressure) axis
+            # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(
                 rows=1, cols=2, shared_yaxes=True, 
                 column_widths=[0.82, 0.18], horizontal_spacing=0.02
             )
             
-            # Background Isotherms (Column 1)
+            # Background Isotherms (Col 1)
             p_bg = np.linspace(100, 1050, 100) 
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
@@ -78,31 +84,31 @@ if station:
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
 
-            # Dewpoint Line (Column 1)
+            # Dewpoint Trace (Col 1)
             fig.add_trace(go.Scatter(
                 x=skew_x(Td, p), y=p, mode='lines+markers', name='Dewpoint',
                 line=dict(color='green', width=3), marker=dict(size=4),
-                customdata=np.stack((Td, p), axis=-1),
-                hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
+                customdata=np.stack((Td, p, z_agl_m, z_agl_ft), axis=-1),
+                hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
             
-            # Temperature Line (Column 1)
+            # Temperature Trace (Col 1)
             fig.add_trace(go.Scatter(
                 x=skew_x(T, p), y=p, mode='lines+markers', name='Temperature',
                 line=dict(color='red', width=3), marker=dict(size=4),
-                customdata=np.stack((T, p), axis=-1),
-                hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
+                customdata=np.stack((T, p, z_agl_m, z_agl_ft), axis=-1),
+                hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
 
-            # Wind Speed & Direction Profile (Column 2)
+            # Wind Profile Trace (Col 2)
             fig.add_trace(go.Scatter(
                 x=wspd, y=p, mode='lines+markers', name='Wind Speed',
                 line=dict(color='purple', width=2), marker=dict(size=4),
-                customdata=np.stack((wspd, wdir, p), axis=-1),
-                hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa<extra></extra>"
+                customdata=np.stack((wspd, wdir, p, z_agl_m, z_agl_ft), axis=-1),
+                hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa | <b>AGL:</b> %{customdata[3]:.0f}m (%{customdata[4]:.0f}ft)<extra></extra>"
             ), row=1, col=2)
             
-            # Common y-axis configuration for both panels
+            # Unified axis configurations
             y_axis_config = dict(
                 type="log",
                 autorange="reversed",
@@ -112,36 +118,16 @@ if station:
                 gridcolor='lightgray'
             )
 
-            # Update layout and apply the matching settings to both axes
             fig.update_layout(
-                yaxis=dict(
-                    **y_axis_config,
-                    title="Pressure (hPa)"
-                ),
-                yaxis2=dict(
-                    **y_axis_config,
-                    showticklabels=False  # Hides duplicate pressure labels between the panels
-                ),
+                yaxis=dict(**y_axis_config, title="Pressure (hPa)"),
+                yaxis2=dict(**y_axis_config, showticklabels=False),
                 hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=20)
             )
             
-            fig.update_xaxes(
-                title="Skewed Temperature (°C)", range=[-40, 50], 
-                showticklabels=False, showgrid=False, row=1, col=1
-            )
-            fig.update_xaxes(
-                title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2
-            )
-            
-            fig.update_xaxes(
-                title="Skewed Temperature (°C)", range=[-40, 50], 
-                showticklabels=False, showgrid=False, row=1, col=1
-            )
-            fig.update_xaxes(
-                title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2
-            )
+            fig.update_xaxes(title="Skewed Temperature (°C)", range=[-40, 50], showticklabels=False, showgrid=False, row=1, col=1)
+            fig.update_xaxes(title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2)
             
             st.plotly_chart(fig, use_container_width=True)
             

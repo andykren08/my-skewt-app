@@ -25,39 +25,43 @@ with st.sidebar:
     else:
         max_hr = 48
 
+    # NEW: Pre-load button to warm the cache
+    if st.button(f"Pre-load all {model.upper()} hours"):
+        # We use a progress bar so the forecaster knows it's working
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for h in range(0, max_hr + 1):
+            status_text.text(f"Downloading hour {h}/{max_hr}...")
+            # Calling this function caches the data in the background
+            get_cached_sounding(model, station, h)
+            progress_bar.progress((h + 1) / (max_hr + 1))
+            
+        status_text.text("✅ Pre-load complete! Scrubbing will now be instant.")
+
     fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_hr, value=0)
     
     st.markdown("---")
     st.subheader("Display Options")
-    
-    # NEW: Display Toggles
     dark_mode = st.toggle("Dark Mode", value=False)
     view_type = st.radio("View Type", ["Full Skew-T", "Hodograph Only"])
     
-    st.markdown("💡 *Tip: Click the slider above and use your left/right keyboard arrows to quickly toggle through hours.*")
-
-# MAIN PAGE
-st.title(f"{model.upper()} Forecast Profile: {station}")
+# ... (Main page layout remains the same) ...
 
 if station:
     with st.spinner(f"Loading {model.upper()} hour {fcst_hour} for {station}..."):
         try:
-            # Aggressively clear any stuck figures from previous failed runs before starting
             plt.close('all') 
-            
             data = get_cached_sounding(model, station, fcst_hour)
             
+            # NEW: Add special_parcels='simple' to bypass heavy ECAPE calculations
             if view_type == "Full Skew-T":
-                spy.build_sounding(data, dark_mode=dark_mode)
+                spy.build_sounding(data, dark_mode=dark_mode, special_parcels='simple')
             else:
                 spy.build_hodograph(data, dark_mode=dark_mode)
                 
             fig = plt.gcf()
-            
-            # FIXED: Streamlit syntax update to clear the log warnings
             st.pyplot(fig, width='stretch')
-            
-            # FIXED: Completely wipe figures from RAM to prevent the Segmentation Fault
             plt.close('all')
             
         except Exception as e:

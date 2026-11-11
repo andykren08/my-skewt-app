@@ -5,94 +5,84 @@ import io
 
 st.set_page_config(page_title="Live BUFKIT Viewer", layout="wide")
 
-# NEW: We now cache the rendered PNG image, not the raw data.
-# max_entries=100 ensures we don't accidentally fill the server's RAM with images
-@st.cache_data(show_spinner=False, max_entries=100)
-def get_cached_plot_image(model, station, hour, view, dark):
-    # 1. Fetch data
-    data = spy.get_bufkit_data(model.lower(), station.upper(), hour, hush=True)
-    
-    # 2. Aggressively clear old memory before drawing
-    plt.close('all')
-    
-    # 3. Draw the plot
-    if view == "Full Skew-T":
-        spy.build_sounding(data, dark_mode=dark, special_parcels='simple')
-    else:
-        spy.build_hodograph(data, dark_mode=dark)
-        
-    fig = plt.gcf()
-    
-    # 4. Save the plot to an invisible PNG image buffer
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", dpi=100) # dpi=100 keeps it fast
-    
-    # 5. Destroy the heavy Matplotlib figure instantly
-    plt.close('all')
-    
-    # Return just the raw image data
-    return buf.getvalue()
+# 1. Initialize the Session State to securely hold our pre-rendered images
+if 'image_flipbook' not in st.session_state:
+    st.session_state['image_flipbook'] = {}
+if 'active_config' not in st.session_state:
+    st.session_state['active_config'] = None
 
 with st.sidebar:
     st.title("Settings")
     model = st.selectbox("Model", ["hrrr", "rap", "gfs", "rrfs"])
-    
     station_input = st.text_input("Station ID (e.g., KRDU)", value="KRDU")
     station = station_input.strip().upper()
 
-    if model == "gfs":
-        max_hr = 384
-    elif model == "rap":
-        max_hr = 51
-    else:
-        max_hr = 48
-        
     st.markdown("---")
-    st.subheader("Display Options")
     dark_mode = st.toggle("Dark Mode", value=False)
     view_type = st.radio("View Type", ["Full Skew-T", "Hodograph Only"])
     st.markdown("---")
 
-    # UPDATED: Pre-load button now renders and caches the PNG images
-    if st.button(f"Pre-load all {model.upper()} hours"):
+    if model == "gfs": max_hr = 384
+    elif model == "rap": max_hr = 51
+    else: max_hr = 48
+
+    # Create a unique ID for the current settings to know if the user changed anything
+    current_config = f"{model}_{station}_{view_type}_{dark_mode}"
+
+    # 2. The "Load" button triggers the one-time generation process
+    if st.button(f"Generate & Store {model.upper()} Run"):
+        # Clear old images from RAM
+        st.session_state['image_flipbook'] = {} 
+        st.session_state['active_config'] = current_config
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
-        available_hours = max_hr
         
-        for h in range(0, max_hr + 1):
-            status_text.text(f"Rendering hour {h}/{max_hr}... (This takes a moment)")
+        for h in range(max_hr + 1):
+            status_text.text(f"Rendering Hour {h}/{max_hr}...")
             try:
-                get_cached_plot_image(model, station, h, view_type, dark_mode)
+                # Fetch data and clear plotting memory
+                data = spy.get_bufkit_data(model.lower(), station, h, hush=True)
+                plt.close('all')
+                
+                # Draw the plot
+                if view_type == "Full Skew-T":
+                    spy.build_sounding(data, dark_mode=dark_mode, special_parcels='simple')
+                else:
+                    spy.build_hodograph(data, dark_mode=dark_mode)
+                    
+                fig = plt.gcf()
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
+                plt.close('all')
+                
+                # 3. Store the final PNG permanently in the session state
+                st.session_state['image_flipbook'][h] = buf.getvalue()
                 progress_bar.progress((h + 1) / (max_hr + 1))
+                
             except IndexError:
-                available_hours = h - 1
-                progress_bar.progress(1.0)
-                break
+                break # Reached the end of the BUFKIT run
             except Exception as e:
-                status_text.text(f"Stopped early at hour {h}.")
+                st.error(f"Error at hour {h}: {e}")
                 break
                 
-        if available_hours < max_hr:
-            status_text.success(f"✅ Images rendered! (Run stops at hour {available_hours})")
-        else:
-            status_text.success("✅ Images rendered! Scrubbing is now instant.")
+        status_text.success(f"✅ Successfully loaded {len(st.session_state['image_flipbook'])} hours! Scrubbing is now instant.")
 
-    fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_hr, value=0)
-    st.markdown("💡 *Tip: Click the slider above and use your left/right keyboard arrows to quickly toggle through hours.*")
+    # 4. Only show the slider IF the images have been successfully generated
+    if st.session_state['active_config'] == current_config and len(st.session_state['image_flipbook']) > 0:
+        available_hours = list(st.session_state['image_flipbook'].keys())
+        max_avail = max(available_hours)
+        fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_avail, value=0)
+        st.markdown("💡 *Click the slider and use left/right keyboard arrows.*")
+    else:
+        fcst_hour = None
 
 # MAIN PAGE
 st.title(f"{model.upper()} Forecast Profile: {station}")
 
-if station:
-    with st.spinner(f"Loading {model.upper()} hour {fcst_hour} for {station}..."):
-        try:
-            # Fetch the pre-rendered image buffer
-            img_bytes = get_cached_plot_image(model, station, fcst_hour, view_type, dark_mode)
-            
-            # Display it as a raw image instead of a Matplotlib object
-            st.image(img_bytes, use_container_width=True)
-            
-        except IndexError:
-            st.error(f"Hour {fcst_hour} is not available in the current {model.upper()} run.")
-        except Exception as e:
-            st.error(f"Error fetching data: {e}")
+# 5. Instantly flash the saved image from the dictionary based on the slider value
+if fcst_hour is not None and fcst_hour in st.session_state['image_flipbook']:
+    # Note: Streamlit changed 'use_container_width' to 'use_column_width' for st.image
+    st.image(st.session_state['image_flipbook'][fcst_hour], use_column_width=True)
+else:
+    st.info("👈 Click **Generate & Store Run** in the sidebar to build the interactive flipbook.")

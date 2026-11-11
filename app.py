@@ -1,6 +1,7 @@
 import streamlit as st
 import sounderpy as spy
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 
 st.set_page_config(page_title="Interactive Skew-T", layout="wide")
@@ -31,90 +32,95 @@ st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
 
 if station:
     with st.spinner("Fetching array data..."):
+        import streamlit as st
+import sounderpy as spy
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
+
+# ... (Keep your existing page config, skew_x function, and sidebar code) ...
+
         try:
-            # Extract the raw arrays and strip the physical units
             data = get_sounding_data(model.lower(), station, fcst_hour)
             p = data['p'].m
             T = data['T'].m
             Td = data['Td'].m
+            wspd = data['wspd'].m # Wind speed (usually knots)
+            wdir = data['wdir'].m # Wind direction (degrees)
             
-            # --- FIXED: Extract metadata properly from SounderPy's site_info dictionary ---
             site_info = data.get('site_info', {})
-            
             raw_init = site_info.get('run-time', ['Unknown Init'])
             raw_valid = site_info.get('valid-time', ['Unknown Valid'])
             
-            # SounderPy returns these as lists of strings (e.g., ['2023', '08', '05', '12'])
-            # This joins them together into a readable timestamp
-            init_time = " ".join(raw_init) if isinstance(raw_init, list) else raw_init
-            valid_time = " ".join(raw_valid) if isinstance(raw_valid, list) else raw_valid
+            # Helper function to format the list [YYYY, MM, DD, HH] into MM/DD/YYYY HHZ
+            def format_date(date_list):
+                if isinstance(date_list, list) and len(date_list) >= 4:
+                    return f"{date_list[1]}/{date_list[2]}/{date_list[0]} {date_list[3]}Z"
+                return " ".join(date_list) if isinstance(date_list, list) else str(date_list)
+
+            init_time = format_date(raw_init)
+            valid_time = format_date(raw_valid)
             
-            # Display the timestamps
             st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
             
-            fig = go.Figure()
+            # Create a 2-column layout sharing the same Y (Pressure) axis
+            fig = make_subplots(rows=1, cols=2, shared_yaxes=True, 
+                                column_widths=[0.85, 0.15], horizontal_spacing=0.01)
             
-            # Add Background Isotherms
+            # Add Background Isotherms (Assigned to column 1)
             p_bg = np.linspace(100, 1050, 100) 
-            
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
-                
                 fig.add_trace(go.Scatter(
-                    x=skew_x(temp_bg, p_bg),
-                    y=p_bg,
-                    mode='lines',
+                    x=skew_x(temp_bg, p_bg), y=p_bg, mode='lines',
                     line=dict(color='blue' if is_freezing else 'lightgrey', 
                               width=2 if is_freezing else 1),
-                    hoverinfo='skip', 
-                    showlegend=False
-                ))
+                    hoverinfo='skip', showlegend=False
+                ), row=1, col=1)
 
-            # Add Dewpoint Line
+            # Add Dewpoint Line (Column 1)
             fig.add_trace(go.Scatter(
-                x=skew_x(Td, p),
-                y=p,
-                mode='lines+markers',
-                name='Dewpoint',
-                line=dict(color='green', width=3),
-                marker=dict(size=4),
+                x=skew_x(Td, p), y=p, mode='lines+markers', name='Dewpoint',
+                line=dict(color='green', width=3), marker=dict(size=4),
                 customdata=np.stack((Td, p), axis=-1),
                 hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
-            ))
+            ), row=1, col=1)
             
-            # Add Temperature Line
+            # Add Temperature Line (Column 1)
             fig.add_trace(go.Scatter(
-                x=skew_x(T, p),
-                y=p,
-                mode='lines+markers',
-                name='Temperature',
-                line=dict(color='red', width=3),
-                marker=dict(size=4),
+                x=skew_x(T, p), y=p, mode='lines+markers', name='Temperature',
+                line=dict(color='red', width=3), marker=dict(size=4),
                 customdata=np.stack((T, p), axis=-1),
                 hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
-            ))
+            ), row=1, col=1)
+
+            # Add Wind Profile (Column 2)
+            fig.add_trace(go.Scatter(
+                x=wspd, y=p, mode='lines+markers', name='Wind Speed',
+                line=dict(color='purple', width=2), marker=dict(size=5),
+                customdata=np.stack((wspd, wdir, p), axis=-1),
+                # Tooltip displays both speed and direction on hover
+                hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<extra></extra>"
+            ), row=1, col=2)
             
-            # Configure Layout
+            # Configure Dual Layout
             fig.update_layout(
                 yaxis=dict(
-                    type="log",
-                    autorange="reversed",
-                    title="Pressure (hPa)",
+                    type="log", autorange="reversed", title="Pressure (hPa)",
                     range=[np.log10(1050), np.log10(100)],
                     tickvals=[1000, 850, 700, 500, 300, 200, 100],
-                    showgrid=True,
-                    gridcolor='lightgray'
-                ),
-                xaxis=dict(
-                    title="Skewed Temperature (°C)",
-                    range=[-40, 50], 
-                    showticklabels=False,
-                    showgrid=False
+                    showgrid=True, gridcolor='lightgray'
                 ),
                 hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=20)
             )
+            
+            # Customize X-axis for Skew-T pane
+            fig.update_xaxes(title="Skewed Temperature (°C)", range=[-40, 50], 
+                             showticklabels=False, showgrid=False, row=1, col=1)
+            # Customize X-axis for Wind pane
+            fig.update_xaxes(title="Wind (kts)", showgrid=True, row=1, col=2)
             
             st.plotly_chart(fig, use_container_width=True)
             

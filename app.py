@@ -102,16 +102,37 @@ if station:
                 hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa<extra></extra>"
             ), row=1, col=2)
             
+            # Common y-axis configuration for both panels
+            y_axis_config = dict(
+                type="log",
+                autorange="reversed",
+                range=[np.log10(1050), np.log10(100)],
+                tickvals=[1000, 850, 700, 500, 300, 200, 100],
+                showgrid=True,
+                gridcolor='lightgray'
+            )
+
+            # Update layout and apply the matching settings to both axes
             fig.update_layout(
                 yaxis=dict(
-                    type="log", autorange="reversed", title="Pressure (hPa)",
-                    range=[np.log10(1050), np.log10(100)],
-                    tickvals=[1000, 850, 700, 500, 300, 200, 100],
-                    showgrid=True, gridcolor='lightgray'
+                    **y_axis_config,
+                    title="Pressure (hPa)"
+                ),
+                yaxis2=dict(
+                    **y_axis_config,
+                    showticklabels=False  # Hides duplicate pressure labels between the panels
                 ),
                 hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=20)
+            )
+            
+            fig.update_xaxes(
+                title="Skewed Temperature (°C)", range=[-40, 50], 
+                showticklabels=False, showgrid=False, row=1, col=1
+            )
+            fig.update_xaxes(
+                title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2
             )
             
             fig.update_xaxes(

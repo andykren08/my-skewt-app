@@ -32,11 +32,12 @@ st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
 if station:
     with st.spinner("Fetching array data..."):
         try:
-            # 2. Extract the raw arrays from the SounderPy dictionary
+            # 2. Extract the raw arrays and strip the physical units using .m
             data = get_sounding_data(model.lower(), station, fcst_hour)
-            p = data['p']    # Pressure in hPa
-            T = data['T']    # Temperature in Celsius
-            Td = data['Td']  # Dewpoint in Celsius
+            
+            p = data['p'].m    # Strips 'hectopascal', leaves just the number
+            T = data['T'].m    # Strips 'degC'
+            Td = data['Td'].m  # Strips 'degC'
             
             # 3. Build the Plotly Figure
             fig = go.Figure()

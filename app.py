@@ -27,17 +27,30 @@ with st.sidebar:
 
     # NEW: Pre-load button to warm the cache
     if st.button(f"Pre-load all {model.upper()} hours"):
-        # We use a progress bar so the forecaster knows it's working
         progress_bar = st.progress(0)
         status_text = st.empty()
         
+        available_hours = max_hr
+        
         for h in range(0, max_hr + 1):
             status_text.text(f"Downloading hour {h}/{max_hr}...")
-            # Calling this function caches the data in the background
-            get_cached_sounding(model, station, h)
-            progress_bar.progress((h + 1) / (max_hr + 1))
-            
-        status_text.text("✅ Pre-load complete! Scrubbing will now be instant.")
+            try:
+                # Calling this function caches the data in the background
+                get_cached_sounding(model, station, h)
+                progress_bar.progress((h + 1) / (max_hr + 1))
+            except IndexError:
+                # We hit the end of the file (e.g., HRRR hour 18 on a 16z run)
+                available_hours = h - 1
+                progress_bar.progress(1.0) # Force bar to 100%
+                break
+            except Exception as e:
+                status_text.text(f"Stopped early at hour {h} due to an error.")
+                break
+                
+        if available_hours < max_hr:
+            status_text.success(f"✅ Pre-load complete! Note: This run stops at hour {available_hours}.")
+        else:
+            status_text.success("✅ Pre-load complete! Scrubbing will now be instant.")
 
     fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_hr, value=0)
     
@@ -64,5 +77,8 @@ if station:
             st.pyplot(fig, width='stretch')
             plt.close('all')
             
+        except IndexError:
+            st.error(f"Hour {fcst_hour} is not available in the current {model.upper()} run.")
+            st.info("Tip: The HRRR only goes out to 48 hours on 00z, 06z, 12z, and 18z runs. Other runs stop at hour 18.")
         except Exception as e:
             st.error(f"Error fetching data: {e}")

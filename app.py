@@ -10,7 +10,7 @@ st.write("Fetch live forecasted soundings directly from the Penn State archive."
 # 1. Create UI inputs for the SounderPy function parameters
 col1, col2, col3 = st.columns(3)
 with col1:
-    model = st.selectbox("Model", ["nam", "gfs", "hrrr", "rap", "namnest"])
+    model = st.selectbox("Model", ["rrfs", "gfs", "hrrr", "rap"])
 with col2:
     station = st.text_input("Station ID (e.g., KGFK, KORD)", value="KGFK").upper()
 with col3:

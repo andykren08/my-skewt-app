@@ -1,88 +1,97 @@
 import streamlit as st
 import sounderpy as spy
-import matplotlib.pyplot as plt
-import io
+import plotly.graph_objects as go
+import numpy as np
 
-st.set_page_config(page_title="Live BUFKIT Viewer", layout="wide")
+st.set_page_config(page_title="Interactive Skew-T", layout="wide")
 
-# 1. Initialize the Session State to securely hold our pre-rendered images
-if 'image_flipbook' not in st.session_state:
-    st.session_state['image_flipbook'] = {}
-if 'active_config' not in st.session_state:
-    st.session_state['active_config'] = None
+# 1. The Skew Transformation Function
+# Shifts the X-coordinate to the right as pressure decreases, creating the 45-degree tilt
+def skew_x(temp, pressure):
+    return temp + 40 * np.log10(1000 / pressure)
+
+# Cache the fetch so if they scrub back to a previous hour, it's instant
+@st.cache_data(show_spinner=False, max_entries=50)
+def get_sounding_data(model, station, hour):
+    # Fetch raw data. hush=True keeps the terminal clean.
+    return spy.get_bufkit_data(model, station, hour, hush=True)
 
 with st.sidebar:
-    st.title("Settings")
+    st.title("Interactive Viewer")
     model = st.selectbox("Model", ["hrrr", "rap", "gfs", "rrfs"])
-    station_input = st.text_input("Station ID (e.g., KRDU)", value="KRDU")
-    station = station_input.strip().upper()
-
-    st.markdown("---")
-    dark_mode = st.toggle("Dark Mode", value=False)
-    view_type = st.radio("View Type", ["Full Skew-T", "Hodograph Only"])
-    st.markdown("---")
+    station = st.text_input("Station ID", value="KRDU").strip().upper()
 
     if model == "gfs": max_hr = 384
     elif model == "rap": max_hr = 51
     else: max_hr = 48
 
-    # Create a unique ID for the current settings to know if the user changed anything
-    current_config = f"{model}_{station}_{view_type}_{dark_mode}"
+    fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_hr, value=0)
 
-    # 2. The "Load" button triggers the one-time generation process
-    if st.button(f"Generate & Store {model.upper()} Run"):
-        # Clear old images from RAM
-        st.session_state['image_flipbook'] = {} 
-        st.session_state['active_config'] = current_config
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for h in range(max_hr + 1):
-            status_text.text(f"Rendering Hour {h}/{max_hr}...")
-            try:
-                # Fetch data and clear plotting memory
-                data = spy.get_bufkit_data(model.lower(), station, h, hush=True)
-                plt.close('all')
-                
-                # Draw the plot
-                if view_type == "Full Skew-T":
-                    spy.build_sounding(data, dark_mode=dark_mode, special_parcels='simple')
-                else:
-                    spy.build_hodograph(data, dark_mode=dark_mode)
-                    
-                fig = plt.gcf()
-                buf = io.BytesIO()
-                fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
-                plt.close('all')
-                
-                # 3. Store the final PNG permanently in the session state
-                st.session_state['image_flipbook'][h] = buf.getvalue()
-                progress_bar.progress((h + 1) / (max_hr + 1))
-                
-            except IndexError:
-                break # Reached the end of the BUFKIT run
-            except Exception as e:
-                st.error(f"Error at hour {h}: {e}")
-                break
-                
-        status_text.success(f"✅ Successfully loaded {len(st.session_state['image_flipbook'])} hours! Scrubbing is now instant.")
+st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
 
-    # 4. Only show the slider IF the images have been successfully generated
-    if st.session_state['active_config'] == current_config and len(st.session_state['image_flipbook']) > 0:
-        available_hours = list(st.session_state['image_flipbook'].keys())
-        max_avail = max(available_hours)
-        fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_avail, value=0)
-        st.markdown("💡 *Click the slider and use left/right keyboard arrows.*")
-    else:
-        fcst_hour = None
-
-# MAIN PAGE
-st.title(f"{model.upper()} Forecast Profile: {station}")
-
-# 5. Instantly flash the saved image from the dictionary based on the slider value
-if fcst_hour is not None and fcst_hour in st.session_state['image_flipbook']:
-    # Note: Streamlit changed 'use_container_width' to 'use_column_width' for st.image
-    st.image(st.session_state['image_flipbook'][fcst_hour], use_column_width=True)
-else:
-    st.info("👈 Click **Generate & Store Run** in the sidebar to build the interactive flipbook.")
+if station:
+    with st.spinner("Fetching array data..."):
+        try:
+            # 2. Extract the raw arrays from the SounderPy dictionary
+            data = get_sounding_data(model.lower(), station, fcst_hour)
+            p = data['p']    # Pressure in hPa
+            T = data['T']    # Temperature in Celsius
+            Td = data['Td']  # Dewpoint in Celsius
+            
+            # 3. Build the Plotly Figure
+            fig = go.Figure()
+            
+            # Add Dewpoint Line
+            fig.add_trace(go.Scatter(
+                x=skew_x(Td, p),
+                y=p,
+                mode='lines+markers',
+                name='Dewpoint',
+                line=dict(color='green', width=3),
+                marker=dict(size=4),
+                # Pass the TRUE temperature into the background data
+                customdata=np.stack((Td, p), axis=-1),
+                # Format the tooltip to show the true data, ignoring the skewed X coordinate
+                hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
+            ))
+            
+            # Add Temperature Line
+            fig.add_trace(go.Scatter(
+                x=skew_x(T, p),
+                y=p,
+                mode='lines+markers',
+                name='Temperature',
+                line=dict(color='red', width=3),
+                marker=dict(size=4),
+                customdata=np.stack((T, p), axis=-1),
+                hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
+            ))
+            
+            # 4. Configure the Skew-T Layout Constraints
+            fig.update_layout(
+                yaxis=dict(
+                    type="log",
+                    autorange="reversed", # Standard meteorological convention
+                    title="Pressure (hPa)",
+                    range=[np.log10(1050), np.log10(100)], # Lock Y axis from 1050 to 100 hPa
+                    tickvals=[1000, 850, 700, 500, 300, 200, 100],
+                    showgrid=True,
+                    gridcolor='lightgray'
+                ),
+                xaxis=dict(
+                    title="Skewed Temperature (°C)",
+                    showticklabels=False, # Hide the skewed X values as they are arbitrary
+                    showgrid=False
+                ),
+                hovermode="y unified", # Combines tooltips so T and Td show up on the same horizontal line
+                height=800,
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+            
+            # Render the interactive plot
+            st.plotly_chart(fig, use_container_width=True)
+            
+        except IndexError:
+            st.error(f"Hour {fcst_hour} not available in this run.")
+        except Exception as e:
+            st.error(f"Data error: {e}")

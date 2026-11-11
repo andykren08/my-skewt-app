@@ -34,21 +34,27 @@ if station:
     with st.spinner("Fetching array data..."):
         try:
             data = get_sounding_data(model.lower(), station, fcst_hour)
-            p = data['p'].m
-            T = data['T'].m
-            Td = data['Td'].m
-            wspd = data['wspd'].m # Wind speed (usually knots)
-            wdir = data['wdir'].m # Wind direction (degrees)
+            p = data['p'].m if hasattr(data['p'], 'm') else np.array(data['p'])
+            T = data['T'].m if hasattr(data['T'], 'm') else np.array(data['T'])
+            Td = data['Td'].m if hasattr(data['Td'], 'm') else np.array(data['Td'])
+            
+            # Extract U and V and compute Speed and Direction
+            u_raw = data.get('u', data.get('u_wind'))
+            v_raw = data.get('v', data.get('v_wind'))
+            u = u_raw.m if hasattr(u_raw, 'm') else np.array(u_raw)
+            v = v_raw.m if hasattr(v_raw, 'm') else np.array(v_raw)
+            
+            wspd = np.hypot(u, v)
+            wdir = (270 - np.rad2deg(np.arctan2(v, u))) % 360
             
             site_info = data.get('site_info', {})
             raw_init = site_info.get('run-time', ['Unknown Init'])
             raw_valid = site_info.get('valid-time', ['Unknown Valid'])
             
-            # Helper function to format the list [YYYY, MM, DD, HH] into MM/DD/YYYY HHZ
             def format_date(date_list):
-                if isinstance(date_list, list) and len(date_list) >= 4:
+                if isinstance(date_list, (list, tuple)) and len(date_list) >= 4:
                     return f"{date_list[1]}/{date_list[2]}/{date_list[0]} {date_list[3]}Z"
-                return " ".join(date_list) if isinstance(date_list, list) else str(date_list)
+                return " ".join(date_list) if isinstance(date_list, (list, tuple)) else str(date_list)
 
             init_time = format_date(raw_init)
             valid_time = format_date(raw_valid)
@@ -56,10 +62,12 @@ if station:
             st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
             
             # Create a 2-column layout sharing the same Y (Pressure) axis
-            fig = make_subplots(rows=1, cols=2, shared_yaxes=True, 
-                                column_widths=[0.85, 0.15], horizontal_spacing=0.01)
+            fig = make_subplots(
+                rows=1, cols=2, shared_yaxes=True, 
+                column_widths=[0.82, 0.18], horizontal_spacing=0.02
+            )
             
-            # Add Background Isotherms (Assigned to column 1)
+            # Background Isotherms (Column 1)
             p_bg = np.linspace(100, 1050, 100) 
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
@@ -70,7 +78,7 @@ if station:
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
 
-            # Add Dewpoint Line (Column 1)
+            # Dewpoint Line (Column 1)
             fig.add_trace(go.Scatter(
                 x=skew_x(Td, p), y=p, mode='lines+markers', name='Dewpoint',
                 line=dict(color='green', width=3), marker=dict(size=4),
@@ -78,7 +86,7 @@ if station:
                 hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
             ), row=1, col=1)
             
-            # Add Temperature Line (Column 1)
+            # Temperature Line (Column 1)
             fig.add_trace(go.Scatter(
                 x=skew_x(T, p), y=p, mode='lines+markers', name='Temperature',
                 line=dict(color='red', width=3), marker=dict(size=4),
@@ -86,16 +94,14 @@ if station:
                 hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
             ), row=1, col=1)
 
-            # Add Wind Profile (Column 2)
+            # Wind Speed & Direction Profile (Column 2)
             fig.add_trace(go.Scatter(
                 x=wspd, y=p, mode='lines+markers', name='Wind Speed',
-                line=dict(color='purple', width=2), marker=dict(size=5),
+                line=dict(color='purple', width=2), marker=dict(size=4),
                 customdata=np.stack((wspd, wdir, p), axis=-1),
-                # Tooltip displays both speed and direction on hover
-                hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<extra></extra>"
+                hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa<extra></extra>"
             ), row=1, col=2)
             
-            # Configure Dual Layout
             fig.update_layout(
                 yaxis=dict(
                     type="log", autorange="reversed", title="Pressure (hPa)",
@@ -108,11 +114,13 @@ if station:
                 margin=dict(l=20, r=20, t=20, b=20)
             )
             
-            # Customize X-axis for Skew-T pane
-            fig.update_xaxes(title="Skewed Temperature (°C)", range=[-40, 50], 
-                             showticklabels=False, showgrid=False, row=1, col=1)
-            # Customize X-axis for Wind pane
-            fig.update_xaxes(title="Wind (kts)", showgrid=True, row=1, col=2)
+            fig.update_xaxes(
+                title="Skewed Temperature (°C)", range=[-40, 50], 
+                showticklabels=False, showgrid=False, row=1, col=1
+            )
+            fig.update_xaxes(
+                title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2
+            )
             
             st.plotly_chart(fig, use_container_width=True)
             

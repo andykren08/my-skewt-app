@@ -38,29 +38,35 @@ if station:
             T = data['T'].m
             Td = data['Td'].m
             
-            # Extract metadata safely (SounderPy usually stores these as lists or strings)
-            init_time = data.get('run', ['Unknown Init'])[0] if isinstance(data.get('run'), list) else data.get('run', 'Unknown Init')
-            valid_time = data.get('valid', ['Unknown Valid'])[0] if isinstance(data.get('valid'), list) else data.get('valid', 'Unknown Valid')
+            # --- FIXED: Extract metadata properly from SounderPy's site_info dictionary ---
+            site_info = data.get('site_info', {})
+            
+            raw_init = site_info.get('run-time', ['Unknown Init'])
+            raw_valid = site_info.get('valid-time', ['Unknown Valid'])
+            
+            # SounderPy returns these as lists of strings (e.g., ['2023', '08', '05', '12'])
+            # This joins them together into a readable timestamp
+            init_time = " ".join(raw_init) if isinstance(raw_init, list) else raw_init
+            valid_time = " ".join(raw_valid) if isinstance(raw_valid, list) else raw_valid
             
             # Display the timestamps
             st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
             
             fig = go.Figure()
             
-            # --- NEW: ADD BACKGROUND ISOTHERMS ---
-            p_bg = np.linspace(100, 1050, 100) # Pressure array for the background lines
+            # Add Background Isotherms
+            p_bg = np.linspace(100, 1050, 100) 
             
-            for temp_bg in range(-100, 60, 10): # Draw lines every 10 degrees from -100C to 50C
+            for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
                 
                 fig.add_trace(go.Scatter(
                     x=skew_x(temp_bg, p_bg),
                     y=p_bg,
                     mode='lines',
-                    # Make the freezing line blue and slightly thicker
                     line=dict(color='blue' if is_freezing else 'lightgrey', 
                               width=2 if is_freezing else 1),
-                    hoverinfo='skip', # Don't show tooltips when hovering over background lines
+                    hoverinfo='skip', 
                     showlegend=False
                 ))
 
@@ -101,7 +107,6 @@ if station:
                 ),
                 xaxis=dict(
                     title="Skewed Temperature (°C)",
-                    # --- NEW: LOCK THE X-AXIS RANGE TO CENTER THE GRAPH ---
                     range=[-40, 50], 
                     showticklabels=False,
                     showgrid=False

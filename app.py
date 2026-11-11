@@ -32,16 +32,38 @@ st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
 if station:
     with st.spinner("Fetching array data..."):
         try:
-            # 2. Extract the raw arrays and strip the physical units using .m
+            # Extract the raw arrays and strip the physical units
             data = get_sounding_data(model.lower(), station, fcst_hour)
+            p = data['p'].m
+            T = data['T'].m
+            Td = data['Td'].m
             
-            p = data['p'].m    # Strips 'hectopascal', leaves just the number
-            T = data['T'].m    # Strips 'degC'
-            Td = data['Td'].m  # Strips 'degC'
+            # Extract metadata safely (SounderPy usually stores these as lists or strings)
+            init_time = data.get('run', ['Unknown Init'])[0] if isinstance(data.get('run'), list) else data.get('run', 'Unknown Init')
+            valid_time = data.get('valid', ['Unknown Valid'])[0] if isinstance(data.get('valid'), list) else data.get('valid', 'Unknown Valid')
             
-            # 3. Build the Plotly Figure
+            # Display the timestamps
+            st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
+            
             fig = go.Figure()
             
+            # --- NEW: ADD BACKGROUND ISOTHERMS ---
+            p_bg = np.linspace(100, 1050, 100) # Pressure array for the background lines
+            
+            for temp_bg in range(-100, 60, 10): # Draw lines every 10 degrees from -100C to 50C
+                is_freezing = (temp_bg == 0)
+                
+                fig.add_trace(go.Scatter(
+                    x=skew_x(temp_bg, p_bg),
+                    y=p_bg,
+                    mode='lines',
+                    # Make the freezing line blue and slightly thicker
+                    line=dict(color='blue' if is_freezing else 'lightgrey', 
+                              width=2 if is_freezing else 1),
+                    hoverinfo='skip', # Don't show tooltips when hovering over background lines
+                    showlegend=False
+                ))
+
             # Add Dewpoint Line
             fig.add_trace(go.Scatter(
                 x=skew_x(Td, p),
@@ -50,9 +72,7 @@ if station:
                 name='Dewpoint',
                 line=dict(color='green', width=3),
                 marker=dict(size=4),
-                # Pass the TRUE temperature into the background data
                 customdata=np.stack((Td, p), axis=-1),
-                # Format the tooltip to show the true data, ignoring the skewed X coordinate
                 hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
             ))
             
@@ -68,28 +88,29 @@ if station:
                 hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa<extra></extra>"
             ))
             
-            # 4. Configure the Skew-T Layout Constraints
+            # Configure Layout
             fig.update_layout(
                 yaxis=dict(
                     type="log",
-                    autorange="reversed", # Standard meteorological convention
+                    autorange="reversed",
                     title="Pressure (hPa)",
-                    range=[np.log10(1050), np.log10(100)], # Lock Y axis from 1050 to 100 hPa
+                    range=[np.log10(1050), np.log10(100)],
                     tickvals=[1000, 850, 700, 500, 300, 200, 100],
                     showgrid=True,
                     gridcolor='lightgray'
                 ),
                 xaxis=dict(
                     title="Skewed Temperature (°C)",
-                    showticklabels=False, # Hide the skewed X values as they are arbitrary
+                    # --- NEW: LOCK THE X-AXIS RANGE TO CENTER THE GRAPH ---
+                    range=[-40, 50], 
+                    showticklabels=False,
                     showgrid=False
                 ),
-                hovermode="y unified", # Combines tooltips so T and Td show up on the same horizontal line
+                hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=20)
             )
             
-            # Render the interactive plot
             st.plotly_chart(fig, use_container_width=True)
             
         except IndexError:

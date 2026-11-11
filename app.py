@@ -42,17 +42,23 @@ st.title(f"{model.upper()} Forecast Profile: {station}")
 if station:
     with st.spinner(f"Loading {model.upper()} hour {fcst_hour} for {station}..."):
         try:
+            # Aggressively clear any stuck figures from previous failed runs before starting
+            plt.close('all') 
+            
             data = get_cached_sounding(model, station, fcst_hour)
             
-            # NEW: Logic to handle plot type and dark mode
             if view_type == "Full Skew-T":
                 spy.build_sounding(data, dark_mode=dark_mode)
             else:
                 spy.build_hodograph(data, dark_mode=dark_mode)
                 
             fig = plt.gcf()
-            st.pyplot(fig, use_container_width=True)
-            plt.clf()
+            
+            # FIXED: Streamlit syntax update to clear the log warnings
+            st.pyplot(fig, width='stretch')
+            
+            # FIXED: Completely wipe figures from RAM to prevent the Segmentation Fault
+            plt.close('all')
             
         except Exception as e:
             st.error(f"Error fetching data: {e}")

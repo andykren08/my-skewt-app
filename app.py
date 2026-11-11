@@ -32,14 +32,6 @@ st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
 
 if station:
     with st.spinner("Fetching array data..."):
-        import streamlit as st
-import sounderpy as spy
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
-
-# ... (Keep your existing page config, skew_x function, and sidebar code) ...
-
         try:
             data = get_sounding_data(model.lower(), station, fcst_hour)
             p = data['p'].m

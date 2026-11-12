@@ -83,12 +83,17 @@ if station:
             
             parcel_path = mpcalc.parcel_profile(p_units, T_units[0], Td_units[0]).m
             
-            # --- NEW: Calculate CAPE, CIN, and LCL ---
+            # --- Calculate CAPE, CIN, and LCL ---
             cape, cin = mpcalc.surface_based_cape_cin(p_units, T_units, Td_units)
+            
+            # Calculate Mixed-Layer CAPE (Uses a standard 100 hPa depth by default)
+            mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p_units, T_units, Td_units)
+            
             lcl_pressure, lcl_temp = mpcalc.lcl(p_units[0], T_units[0], Td_units[0])
             
             # Clean up NaN values (if the atmosphere is completely stable, CAPE might be NaN)
             cape_val = f"{cape.m:.0f}" if not np.isnan(cape.m) else "0"
+            mlcape_val = f"{mlcape.m:.0f}" if not np.isnan(mlcape.m) else "0"
             cin_val = f"{cin.m:.0f}" if not np.isnan(cin.m) else "0"
             lcl_val = f"{lcl_pressure.m:.0f}" if not np.isnan(lcl_pressure.m) else "N/A"
             
@@ -108,13 +113,12 @@ if station:
 
             st.subheader(f"**Init:** {format_date(raw_init)} | **Valid:** {format_date(raw_valid)}")
             
-            # --- NEW: Display Thermodynamic Metrics ---
-            # Creates 4 neat columns above the plot
+            # --- Display Thermodynamic Metrics ---
             metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
             metric_col1.metric("SBCAPE", f"{cape_val} J/kg")
-            metric_col2.metric("SBCIN", f"{cin_val} J/kg")
-            metric_col3.metric("LCL Pressure", f"{lcl_val} hPa")
-            # Left the 4th column blank for future parameters
+            metric_col2.metric("MLCAPE", f"{mlcape_val} J/kg")
+            metric_col3.metric("SBCIN", f"{cin_val} J/kg")
+            metric_col4.metric("LCL Pressure", f"{lcl_val} hPa")
             
             # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(

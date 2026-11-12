@@ -93,7 +93,7 @@ if station:
             
             # --- Kinematics: 0-6 km Bulk Shear ---
             # Calculate the u and v shear components over a 6000m depth
-            u_shear, v_shear = mpcalc.bulk_shear(p_units, u_units, v_units, heights=z_units, depth=6000 * units.m)
+            u_shear, v_shear = mpcalc.bulk_shear(p_units, u_units, v_units, height=z_units, depth=6000 * units.m)
             # Calculate the total magnitude of the shear vector
             shear_6km = np.hypot(u_shear.m, v_shear.m)
             
@@ -134,12 +134,6 @@ if station:
             # The other 3 columns are currently empty placeholders for future parameters
             
             st.markdown("---") # Adds a subtle divider line before the graph
-            
-            # 2-column layout sharing the synchronized log y-axis
-            fig = make_subplots(
-                rows=1, cols=2, shared_yaxes=True, 
-                column_widths=[0.82, 0.18], horizontal_spacing=0.02
-            )
             
             # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(

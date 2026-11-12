@@ -80,22 +80,29 @@ if station:
             p_units = p * units.hPa
             T_units = T * units.degC
             Td_units = Td * units.degC
+            u_units = u * units.knots
+            v_units = v * units.knots
+            z_units = z_agl_m * units.m
             
             parcel_path = mpcalc.parcel_profile(p_units, T_units[0], Td_units[0]).m
             
-            # --- Calculate CAPE, CIN, and LCL ---
+            # --- Thermodynamics: CAPE, CIN, and LCL ---
             cape, cin = mpcalc.surface_based_cape_cin(p_units, T_units, Td_units)
-            
-            # Calculate Mixed-Layer CAPE (Uses a standard 100 hPa depth by default)
             mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p_units, T_units, Td_units)
-            
             lcl_pressure, lcl_temp = mpcalc.lcl(p_units[0], T_units[0], Td_units[0])
             
-            # Clean up NaN values (if the atmosphere is completely stable, CAPE might be NaN)
+            # --- Kinematics: 0-6 km Bulk Shear ---
+            # Calculate the u and v shear components over a 6000m depth
+            u_shear, v_shear = mpcalc.bulk_shear(p_units, u_units, v_units, heights=z_units, depth=6000 * units.m)
+            # Calculate the total magnitude of the shear vector
+            shear_6km = np.hypot(u_shear.m, v_shear.m)
+            
+            # Clean up NaN values
             cape_val = f"{cape.m:.0f}" if not np.isnan(cape.m) else "0"
             mlcape_val = f"{mlcape.m:.0f}" if not np.isnan(mlcape.m) else "0"
             cin_val = f"{cin.m:.0f}" if not np.isnan(cin.m) else "0"
             lcl_val = f"{lcl_pressure.m:.0f}" if not np.isnan(lcl_pressure.m) else "N/A"
+            shear_val = f"{shear_6km:.0f}" if not np.isnan(shear_6km) else "N/A"
             
             # Dark Mode Color Mapping
             text_color = "white" if dark_mode else "black"
@@ -113,12 +120,26 @@ if station:
 
             st.subheader(f"**Init:** {format_date(raw_init)} | **Valid:** {format_date(raw_valid)}")
             
-            # --- Display Thermodynamic Metrics ---
+            # --- Display Thermodynamic & Kinematic Metrics ---
+            # Row 1: Thermodynamics
             metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
             metric_col1.metric("SBCAPE", f"{cape_val} J/kg")
             metric_col2.metric("MLCAPE", f"{mlcape_val} J/kg")
             metric_col3.metric("SBCIN", f"{cin_val} J/kg")
             metric_col4.metric("LCL Pressure", f"{lcl_val} hPa")
+            
+            # Row 2: Kinematics
+            kin_col1, kin_col2, kin_col3, kin_col4 = st.columns(4)
+            kin_col1.metric("0-6 km Bulk Shear", f"{shear_val} kts")
+            # The other 3 columns are currently empty placeholders for future parameters
+            
+            st.markdown("---") # Adds a subtle divider line before the graph
+            
+            # 2-column layout sharing the synchronized log y-axis
+            fig = make_subplots(
+                rows=1, cols=2, shared_yaxes=True, 
+                column_widths=[0.82, 0.18], horizontal_spacing=0.02
+            )
             
             # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(

@@ -174,7 +174,7 @@ if station:
                 tickfont=dict(size=16, color='black')    
             )
 
-           fig.update_layout(
+            fig.update_layout(
                 yaxis=dict(**y_axis_config, title="Pressure (hPa)"),
                 yaxis2=dict(**y_axis_config, showticklabels=False),
                 hovermode="y unified",

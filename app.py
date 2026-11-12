@@ -71,7 +71,20 @@ if station:
             z_agl_ft = z_agl_m * 3.28084
             
             # MetPy Parcel Profile Calculation
-            parcel_path = mpcalc.parcel_profile(p * units.hPa, T[0] * units.degC, Td[0] * units.degC).m
+            p_units = p * units.hPa
+            T_units = T * units.degC
+            Td_units = Td * units.degC
+            
+            parcel_path = mpcalc.parcel_profile(p_units, T_units[0], Td_units[0]).m
+            
+            # --- NEW: Calculate CAPE, CIN, and LCL ---
+            cape, cin = mpcalc.surface_based_cape_cin(p_units, T_units, Td_units)
+            lcl_pressure, lcl_temp = mpcalc.lcl(p_units[0], T_units[0], Td_units[0])
+            
+            # Clean up NaN values (if the atmosphere is completely stable, CAPE might be NaN)
+            cape_val = f"{cape.m:.0f}" if not np.isnan(cape.m) else "0"
+            cin_val = f"{cin.m:.0f}" if not np.isnan(cin.m) else "0"
+            lcl_val = f"{lcl_pressure.m:.0f}" if not np.isnan(lcl_pressure.m) else "N/A"
             
             # Dark Mode Color Mapping
             text_color = "white" if dark_mode else "black"
@@ -88,6 +101,20 @@ if station:
                 return " ".join(date_list) if isinstance(date_list, (list, tuple)) else str(date_list)
 
             st.subheader(f"**Init:** {format_date(raw_init)} | **Valid:** {format_date(raw_valid)}")
+            
+            # --- NEW: Display Thermodynamic Metrics ---
+            # Creates 4 neat columns above the plot
+            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+            metric_col1.metric("SBCAPE", f"{cape_val} J/kg")
+            metric_col2.metric("SBCIN", f"{cin_val} J/kg")
+            metric_col3.metric("LCL Pressure", f"{lcl_val} hPa")
+            # Left the 4th column blank for future parameters
+            
+            # 2-column layout sharing the synchronized log y-axis
+            fig = make_subplots(
+                rows=1, cols=2, shared_yaxes=True, 
+                column_widths=[0.82, 0.18], horizontal_spacing=0.02
+            )
             
             # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(

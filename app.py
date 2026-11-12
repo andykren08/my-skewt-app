@@ -169,8 +169,9 @@ if station:
                 tickvals=[1000, 850, 700, 500, 300, 200, 100],
                 showgrid=True,
                 gridcolor='lightgray',
-                title_font=dict(size=16), # Larger axis title
-                tickfont=dict(size=14)    # Larger axis numbers
+                # CHANGED: Size up to 18/16, force black color
+                title_font=dict(size=18, color='black'), 
+                tickfont=dict(size=16, color='black')    
             )
 
             fig.update_layout(
@@ -178,18 +179,21 @@ if station:
                 yaxis2=dict(**y_axis_config, showticklabels=False),
                 hovermode="y unified",
                 height=800,
-                margin=dict(l=20, r=20, t=20, b=40), # Added extra bottom margin for labels
-                font=dict(size=14) # NEW: Increases global font size for titles/legends
+                margin=dict(l=20, r=20, t=20, b=50), 
+                # CHANGED: Force all general text (like legends/hover) to black and size 16
+                font=dict(size=16, color='black') 
             )
             
-            # WIDENED RANGE: Changed [-40, 50] to [-90, 60] so the upper levels don't clip
             fig.update_xaxes(
-                title="Temperature (°C)", title_font=dict(size=16),
+                title="Temperature (°C)", 
+                title_font=dict(size=18, color='black'),
                 range=[-90, 60], showticklabels=False, showgrid=False, row=1, col=1
             )
             
             fig.update_xaxes(
-                title="Wind (kts)", title_font=dict(size=16), tickfont=dict(size=14),
+                title="Wind (kts)", 
+                title_font=dict(size=18, color='black'), 
+                tickfont=dict(size=16, color='black'),
                 showgrid=True, gridcolor='lightgray', row=1, col=2
             )
             

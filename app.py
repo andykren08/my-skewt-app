@@ -91,12 +91,14 @@ if station:
                 ), row=1, col=1)
                 
                 # NEW: Add a text label at the 1000 hPa level for the isotherm
+                # Add a text label at the 1000 hPa level for the isotherm
                 if temp_bg >= -90 and temp_bg <= 50:
                     fig.add_trace(go.Scatter(
                         x=[skew_x(temp_bg, 1000)], y=[1000],
                         mode='text', text=[f"{temp_bg}"],
                         textposition="bottom center",
-                        textfont=dict(color='blue' if is_freezing else 'gray', size=12),
+                        # CHANGED: Gray to black, size 12 to 14
+                        textfont=dict(color='blue' if is_freezing else 'black', size=14),
                         hoverinfo='skip', showlegend=False
                     ), row=1, col=1)
 

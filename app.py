@@ -34,16 +34,22 @@ with st.sidebar:
     dark_mode = st.toggle("Dark Mode", value=False)
     st.markdown("---")
 
-    # Synchronized Navigation (using 'key' keeps the slider in focus)
+   # Synchronized Navigation Callbacks
+    def step_down():
+        if st.session_state.hour_index > 0:
+            st.session_state.hour_index -= 1
+
+    def step_up(maximum):
+        if st.session_state.hour_index < maximum:
+            st.session_state.hour_index += 1
+
+    # Slider locked to the session state
     st.slider("Forecast Hour", min_value=0, max_value=max_hr, key="hour_index")
     
+    # Navigation Buttons trigger the callbacks
     col1, col2 = st.columns(2)
-    if col1.button("⬅️ Prev Hour") and st.session_state.hour_index > 0:
-        st.session_state.hour_index -= 1
-        st.rerun()
-    if col2.button("Next Hour ➡️") and st.session_state.hour_index < max_hr:
-        st.session_state.hour_index += 1
-        st.rerun()
+    col1.button("⬅️ Prev Hour", on_click=step_down)
+    col2.button("Next Hour ➡️", on_click=step_up, args=(max_hr,))
 
 st.title(f"{model.upper()} Profile: {station} | Hour {st.session_state.hour_index}")
 

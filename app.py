@@ -34,11 +34,8 @@ with st.sidebar:
     dark_mode = st.toggle("Dark Mode", value=False)
     st.markdown("---")
 
-    # Synchronized Navigation
-    st.session_state.hour_index = st.slider(
-        "Forecast Hour", min_value=0, max_value=max_hr, 
-        value=st.session_state.hour_index
-    )
+    # Synchronized Navigation (using 'key' keeps the slider in focus)
+    st.slider("Forecast Hour", min_value=0, max_value=max_hr, key="hour_index")
     
     col1, col2 = st.columns(2)
     if col1.button("⬅️ Prev Hour") and st.session_state.hour_index > 0:

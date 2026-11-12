@@ -8,15 +8,17 @@ from metpy.units import units
 
 st.set_page_config(page_title="Interactive Skew-T", layout="wide")
 
-# 1. The Skew Transformation Function
-# Shifts the X-coordinate to the right as pressure decreases, creating the 45-degree tilt
+# Initialize session state for the forecast hour
+if 'hour_index' not in st.session_state:
+    st.session_state.hour_index = 0
+
+# The Skew Transformation Function
 def skew_x(temp, pressure):
     return temp + 40 * np.log10(1000 / pressure)
 
-# Cache the fetch so if they scrub back to a previous hour, it's instant
+# Cache the fetch so scrubbing back is instant
 @st.cache_data(show_spinner=False, max_entries=50)
 def get_sounding_data(model, station, hour):
-    # Fetch raw data. hush=True keeps the terminal clean.
     return spy.get_bufkit_data(model, station, hour, hush=True)
 
 with st.sidebar:
@@ -27,15 +29,31 @@ with st.sidebar:
     if model == "gfs": max_hr = 384
     elif model == "rap": max_hr = 51
     else: max_hr = 48
+    
+    st.markdown("---")
+    dark_mode = st.toggle("Dark Mode", value=False)
+    st.markdown("---")
 
-    fcst_hour = st.slider("Forecast Hour", min_value=0, max_value=max_hr, value=0)
+    # Synchronized Navigation
+    st.session_state.hour_index = st.slider(
+        "Forecast Hour", min_value=0, max_value=max_hr, 
+        value=st.session_state.hour_index
+    )
+    
+    col1, col2 = st.columns(2)
+    if col1.button("⬅️ Prev Hour") and st.session_state.hour_index > 0:
+        st.session_state.hour_index -= 1
+        st.rerun()
+    if col2.button("Next Hour ➡️") and st.session_state.hour_index < max_hr:
+        st.session_state.hour_index += 1
+        st.rerun()
 
-st.title(f"{model.upper()} Profile: {station} | Hour {fcst_hour}")
+st.title(f"{model.upper()} Profile: {station} | Hour {st.session_state.hour_index}")
 
 if station:
     with st.spinner("Fetching array data..."):
         try:
-            data = get_sounding_data(model.lower(), station, fcst_hour)
+            data = get_sounding_data(model.lower(), station, st.session_state.hour_index)
             p = data['p'].m if hasattr(data['p'], 'm') else np.array(data['p'])
             T = data['T'].m if hasattr(data['T'], 'm') else np.array(data['T'])
             Td = data['Td'].m if hasattr(data['Td'], 'm') else np.array(data['Td'])
@@ -55,6 +73,14 @@ if station:
             z_agl_m = z - sfc_elev
             z_agl_ft = z_agl_m * 3.28084
             
+            # MetPy Parcel Profile Calculation
+            parcel_path = mpcalc.parcel_profile(p * units.hPa, T[0] * units.degC, Td[0] * units.degC).m
+            
+            # Dark Mode Color Mapping
+            text_color = "white" if dark_mode else "black"
+            bg_color = "#0e1117" if dark_mode else "white" 
+            grid_color = "#333333" if dark_mode else "lightgray"
+            
             site_info = data.get('site_info', {})
             raw_init = site_info.get('run-time', ['Unknown Init'])
             raw_valid = site_info.get('valid-time', ['Unknown Valid'])
@@ -64,10 +90,7 @@ if station:
                     return f"{date_list[1]}/{date_list[2]}/{date_list[0]} {date_list[3]}Z"
                 return " ".join(date_list) if isinstance(date_list, (list, tuple)) else str(date_list)
 
-            init_time = format_date(raw_init)
-            valid_time = format_date(raw_valid)
-            
-            st.subheader(f"**Init:** {init_time} | **Valid:** {valid_time}")
+            st.subheader(f"**Init:** {format_date(raw_init)} | **Valid:** {format_date(raw_valid)}")
             
             # 2-column layout sharing the synchronized log y-axis
             fig = make_subplots(
@@ -75,38 +98,31 @@ if station:
                 column_widths=[0.82, 0.18], horizontal_spacing=0.02
             )
             
-           # --- START PLOTLY TRACES ---
-            
-           # Background Isotherms (Col 1)
+            # 1. Background Isotherms (Col 1)
             p_bg = np.linspace(100, 1050, 100) 
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
                 
-                # Draw the diagonal line
                 fig.add_trace(go.Scatter(
                     x=skew_x(temp_bg, p_bg), y=p_bg, mode='lines',
-                    line=dict(color='blue' if is_freezing else 'lightgrey', 
+                    line=dict(color='blue' if is_freezing else grid_color, 
                               width=2 if is_freezing else 1),
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
                 
-                # NEW: Add a text label at the 1000 hPa level for the isotherm
-                # Add a text label at the 1000 hPa level for the isotherm
+                # Text label at the 1000 hPa level for the isotherm
                 if temp_bg >= -90 and temp_bg <= 50:
                     fig.add_trace(go.Scatter(
                         x=[skew_x(temp_bg, 1000)], y=[1000],
                         mode='text', text=[f"{temp_bg}"],
                         textposition="bottom center",
-                        # CHANGED: Gray to black, size 12 to 14
-                        textfont=dict(color='blue' if is_freezing else 'black', size=18),
+                        textfont=dict(color='blue' if is_freezing else text_color, size=14),
                         hoverinfo='skip', showlegend=False
                     ), row=1, col=1)
 
-            # 2. NEW: Background Dry Adiabats (Dashed Tan)
-            # Create a pressure array with MetPy units
+            # 2. Background Dry Adiabats
             p_levels = np.linspace(1000, 100, 50) * units.hPa
             for t0 in range(-40, 100, 20):
-                # Calculate the dry lapse rate curve starting from 1000 hPa
                 t_dry = mpcalc.dry_lapse(p_levels, t0 * units.degC).m
                 fig.add_trace(go.Scatter(
                     x=skew_x(t_dry, p_levels.m), y=p_levels.m, mode='lines',
@@ -114,9 +130,8 @@ if station:
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
 
-            # 3. NEW: Background Moist Adiabats (Dotted Green)
+            # 3. Background Moist Adiabats
             for t0 in range(-20, 50, 10):
-                # Calculate the pseudo-adiabatic lapse rate curve
                 t_moist = mpcalc.moist_lapse(p_levels, t0 * units.degC).m
                 fig.add_trace(go.Scatter(
                     x=skew_x(t_moist, p_levels.m), y=p_levels.m, mode='lines',
@@ -124,7 +139,14 @@ if station:
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
 
-            # 4. Dewpoint Trace
+            # 4. Parcel Trajectory
+            fig.add_trace(go.Scatter(
+                x=skew_x(parcel_path, p), y=p, mode='lines', name='SB Parcel',
+                line=dict(color=text_color, width=2, dash='dashdot'),
+                hoverinfo='skip', showlegend=False
+            ), row=1, col=1)
+
+            # 5. Dewpoint Trace
             fig.add_trace(go.Scatter(
                 x=skew_x(Td, p), y=p, mode='lines+markers', name='Dewpoint',
                 line=dict(color='green', width=3), marker=dict(size=4),
@@ -132,7 +154,7 @@ if station:
                 hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
             
-            # 5. Temperature Trace
+            # 6. Temperature Trace
             fig.add_trace(go.Scatter(
                 x=skew_x(T, p), y=p, mode='lines+markers', name='Temperature',
                 line=dict(color='red', width=3), marker=dict(size=4),
@@ -140,22 +162,19 @@ if station:
                 hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
 
-            # 6. NEW: Directional Wind Arrows
-            # We sample the arrays (e.g., [::4]) so the arrows aren't overlapping and crowded
+            # 7. Directional Wind Arrows
             step = 4 
             fig.add_trace(go.Scatter(
                 x=wspd[::step], y=p[::step], mode='markers+lines', name='Wind',
-                line=dict(color='lightgrey', width=1),
+                line=dict(color=grid_color, width=1),
                 marker=dict(
                     symbol='arrow',
                     size=12,
-                    # Plotly angles rotate counter-clockwise from 3 o'clock, 
-                    # so we map the meteorological wind direction to the visual arrow angle
                     angle=270 - wdir[::step], 
                     color=wspd[::step], 
                     colorscale='Purples', 
                     showscale=False,
-                    line=dict(width=1, color='black')
+                    line=dict(width=1, color=text_color)
                 ),
                 customdata=np.stack((wspd[::step], wdir[::step], p[::step], z_agl_m[::step], z_agl_ft[::step]), axis=-1),
                 hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa | <b>AGL:</b> %{customdata[3]:.0f}m (%{customdata[4]:.0f}ft)<extra></extra>"
@@ -168,10 +187,9 @@ if station:
                 range=[np.log10(1050), np.log10(100)],
                 tickvals=[1000, 850, 700, 500, 300, 200, 100],
                 showgrid=True,
-                gridcolor='lightgray',
-                # CHANGED: Size up to 18/16, force black color
-                title_font=dict(size=18, color='black'), 
-                tickfont=dict(size=16, color='black')    
+                gridcolor=grid_color,
+                title_font=dict(size=18, color=text_color), 
+                tickfont=dict(size=16, color=text_color)    
             )
 
             fig.update_layout(
@@ -180,31 +198,32 @@ if station:
                 hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=50), 
-                font=dict(size=18, color='black'),
-                # NEW: Increases tooltip font size and forces black text on a white background
+                font=dict(size=18, color=text_color),
+                paper_bgcolor=bg_color,
+                plot_bgcolor=bg_color,
                 hoverlabel=dict(
                     font_size=18,
-                    font_color='black',
-                    bgcolor='white'
+                    font_color=text_color,
+                    bgcolor=bg_color
                 )
             )
             
             fig.update_xaxes(
                 title="Temperature (°C)", 
-                title_font=dict(size=18, color='black'),
+                title_font=dict(size=18, color=text_color),
                 range=[-90, 60], showticklabels=False, showgrid=False, row=1, col=1
             )
             
             fig.update_xaxes(
                 title="Wind (kts)", 
-                title_font=dict(size=18, color='black'), 
-                tickfont=dict(size=16, color='black'),
-                showgrid=True, gridcolor='lightgray', row=1, col=2
+                title_font=dict(size=18, color=text_color), 
+                tickfont=dict(size=16, color=text_color),
+                showgrid=True, gridcolor=grid_color, row=1, col=2
             )
             
             st.plotly_chart(fig, use_container_width=True)
             
         except IndexError:
-            st.error(f"Hour {fcst_hour} not available in this run.")
+            st.error(f"Hour {st.session_state.hour_index} not available in this run.")
         except Exception as e:
             st.error(f"Data error: {e}")

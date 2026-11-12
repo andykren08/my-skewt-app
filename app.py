@@ -174,14 +174,19 @@ if station:
                 tickfont=dict(size=16, color='black')    
             )
 
-            fig.update_layout(
+           fig.update_layout(
                 yaxis=dict(**y_axis_config, title="Pressure (hPa)"),
                 yaxis2=dict(**y_axis_config, showticklabels=False),
                 hovermode="y unified",
                 height=800,
                 margin=dict(l=20, r=20, t=20, b=50), 
-                # CHANGED: Force all general text (like legends/hover) to black and size 16
-                font=dict(size=16, color='black') 
+                font=dict(size=18, color='black'),
+                # NEW: Increases tooltip font size and forces black text on a white background
+                hoverlabel=dict(
+                    font_size=18,
+                    font_color='black',
+                    bgcolor='white'
+                )
             )
             
             fig.update_xaxes(

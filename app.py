@@ -3,6 +3,8 @@ import sounderpy as spy
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
+import metpy.calc as mpcalc
+from metpy.units import units
 
 st.set_page_config(page_title="Interactive Skew-T", layout="wide")
 
@@ -73,7 +75,9 @@ if station:
                 column_widths=[0.82, 0.18], horizontal_spacing=0.02
             )
             
-            # Background Isotherms (Col 1)
+           # --- START PLOTLY TRACES ---
+            
+            # 1. Background Isotherms (Grey/Blue)
             p_bg = np.linspace(100, 1050, 100) 
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
@@ -84,7 +88,29 @@ if station:
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
 
-            # Dewpoint Trace (Col 1)
+            # 2. NEW: Background Dry Adiabats (Dashed Tan)
+            # Create a pressure array with MetPy units
+            p_levels = np.linspace(1000, 100, 50) * units.hPa
+            for t0 in range(-40, 100, 20):
+                # Calculate the dry lapse rate curve starting from 1000 hPa
+                t_dry = mpcalc.dry_lapse(p_levels, t0 * units.degC).m
+                fig.add_trace(go.Scatter(
+                    x=skew_x(t_dry, p_levels.m), y=p_levels.m, mode='lines',
+                    line=dict(color='tan', width=1, dash='dash'),
+                    hoverinfo='skip', showlegend=False
+                ), row=1, col=1)
+
+            # 3. NEW: Background Moist Adiabats (Dotted Green)
+            for t0 in range(-20, 50, 10):
+                # Calculate the pseudo-adiabatic lapse rate curve
+                t_moist = mpcalc.moist_lapse(p_levels, t0 * units.degC).m
+                fig.add_trace(go.Scatter(
+                    x=skew_x(t_moist, p_levels.m), y=p_levels.m, mode='lines',
+                    line=dict(color='lightgreen', width=1, dash='dot'),
+                    hoverinfo='skip', showlegend=False
+                ), row=1, col=1)
+
+            # 4. Dewpoint Trace
             fig.add_trace(go.Scatter(
                 x=skew_x(Td, p), y=p, mode='lines+markers', name='Dewpoint',
                 line=dict(color='green', width=3), marker=dict(size=4),
@@ -92,7 +118,7 @@ if station:
                 hovertemplate="<b>Td:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
             
-            # Temperature Trace (Col 1)
+            # 5. Temperature Trace
             fig.add_trace(go.Scatter(
                 x=skew_x(T, p), y=p, mode='lines+markers', name='Temperature',
                 line=dict(color='red', width=3), marker=dict(size=4),
@@ -100,11 +126,24 @@ if station:
                 hovertemplate="<b>T:</b> %{customdata[0]:.1f}°C<br><b>P:</b> %{customdata[1]:.0f} hPa | <b>AGL:</b> %{customdata[2]:.0f}m (%{customdata[3]:.0f}ft)<extra></extra>"
             ), row=1, col=1)
 
-            # Wind Profile Trace (Col 2)
+            # 6. NEW: Directional Wind Arrows
+            # We sample the arrays (e.g., [::4]) so the arrows aren't overlapping and crowded
+            step = 4 
             fig.add_trace(go.Scatter(
-                x=wspd, y=p, mode='lines+markers', name='Wind Speed',
-                line=dict(color='purple', width=2), marker=dict(size=4),
-                customdata=np.stack((wspd, wdir, p, z_agl_m, z_agl_ft), axis=-1),
+                x=wspd[::step], y=p[::step], mode='markers+lines', name='Wind',
+                line=dict(color='lightgrey', width=1),
+                marker=dict(
+                    symbol='arrow',
+                    size=12,
+                    # Plotly angles rotate counter-clockwise from 3 o'clock, 
+                    # so we map the meteorological wind direction to the visual arrow angle
+                    angle=270 - wdir[::step], 
+                    color=wspd[::step], 
+                    colorscale='Purples', 
+                    showscale=False,
+                    line=dict(width=1, color='black')
+                ),
+                customdata=np.stack((wspd[::step], wdir[::step], p[::step], z_agl_m[::step], z_agl_ft[::step]), axis=-1),
                 hovertemplate="<b>Spd:</b> %{customdata[0]:.0f} kts<br><b>Dir:</b> %{customdata[1]:.0f}°<br><b>P:</b> %{customdata[2]:.0f} hPa | <b>AGL:</b> %{customdata[3]:.0f}m (%{customdata[4]:.0f}ft)<extra></extra>"
             ), row=1, col=2)
             

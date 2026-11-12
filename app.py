@@ -98,7 +98,7 @@ if station:
                         mode='text', text=[f"{temp_bg}"],
                         textposition="bottom center",
                         # CHANGED: Gray to black, size 12 to 14
-                        textfont=dict(color='blue' if is_freezing else 'black', size=14),
+                        textfont=dict(color='blue' if is_freezing else 'black', size=18),
                         hoverinfo='skip', showlegend=False
                     ), row=1, col=1)
 

@@ -77,16 +77,28 @@ if station:
             
            # --- START PLOTLY TRACES ---
             
-            # 1. Background Isotherms (Grey/Blue)
+           # Background Isotherms (Col 1)
             p_bg = np.linspace(100, 1050, 100) 
             for temp_bg in range(-100, 60, 10): 
                 is_freezing = (temp_bg == 0)
+                
+                # Draw the diagonal line
                 fig.add_trace(go.Scatter(
                     x=skew_x(temp_bg, p_bg), y=p_bg, mode='lines',
                     line=dict(color='blue' if is_freezing else 'lightgrey', 
                               width=2 if is_freezing else 1),
                     hoverinfo='skip', showlegend=False
                 ), row=1, col=1)
+                
+                # NEW: Add a text label at the 1000 hPa level for the isotherm
+                if temp_bg >= -90 and temp_bg <= 50:
+                    fig.add_trace(go.Scatter(
+                        x=[skew_x(temp_bg, 1000)], y=[1000],
+                        mode='text', text=[f"{temp_bg}"],
+                        textposition="bottom center",
+                        textfont=dict(color='blue' if is_freezing else 'gray', size=12),
+                        hoverinfo='skip', showlegend=False
+                    ), row=1, col=1)
 
             # 2. NEW: Background Dry Adiabats (Dashed Tan)
             # Create a pressure array with MetPy units
@@ -154,7 +166,9 @@ if station:
                 range=[np.log10(1050), np.log10(100)],
                 tickvals=[1000, 850, 700, 500, 300, 200, 100],
                 showgrid=True,
-                gridcolor='lightgray'
+                gridcolor='lightgray',
+                title_font=dict(size=16), # Larger axis title
+                tickfont=dict(size=14)    # Larger axis numbers
             )
 
             fig.update_layout(
@@ -162,11 +176,20 @@ if station:
                 yaxis2=dict(**y_axis_config, showticklabels=False),
                 hovermode="y unified",
                 height=800,
-                margin=dict(l=20, r=20, t=20, b=20)
+                margin=dict(l=20, r=20, t=20, b=40), # Added extra bottom margin for labels
+                font=dict(size=14) # NEW: Increases global font size for titles/legends
             )
             
-            fig.update_xaxes(title="Skewed Temperature (°C)", range=[-40, 50], showticklabels=False, showgrid=False, row=1, col=1)
-            fig.update_xaxes(title="Wind (kts)", showgrid=True, gridcolor='lightgray', row=1, col=2)
+            # WIDENED RANGE: Changed [-40, 50] to [-90, 60] so the upper levels don't clip
+            fig.update_xaxes(
+                title="Temperature (°C)", title_font=dict(size=16),
+                range=[-90, 60], showticklabels=False, showgrid=False, row=1, col=1
+            )
+            
+            fig.update_xaxes(
+                title="Wind (kts)", title_font=dict(size=16), tickfont=dict(size=14),
+                showgrid=True, gridcolor='lightgray', row=1, col=2
+            )
             
             st.plotly_chart(fig, use_container_width=True)
             
